@@ -1,0 +1,166 @@
+{
+  "entities": {
+    "Prayer": {
+      "title": "Prayer Request",
+      "description": "A prayer request shared by a community member.",
+      "type": "object",
+      "properties": {
+        "authorName": { "type": "string", "description": "Name of the person requesting prayer." },
+        "authorUid": { "type": "string", "description": "Firebase Auth UID of the author." },
+        "content": { "type": "string", "description": "The prayer request message." },
+        "isAnonymous": { "type": "boolean", "description": "Whether the request is anonymous." },
+        "prayerCount": { "type": "integer", "description": "Number of people who have prayed for this." },
+        "prayedBy": { "type": "array", "items": { "type": "string" }, "description": "List of UIDs who have prayed." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp of creation." }
+      },
+      "required": ["authorName", "authorUid", "content", "createdAt"]
+    },
+    "Testimony": {
+      "title": "Testimony",
+      "description": "A praise report or testimony shared by a member.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the person sharing the testimony." },
+        "uid": { "type": "string", "description": "Firebase Auth UID of the author." },
+        "content": { "type": "string", "description": "The testimony content." },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"], "description": "Moderation status." },
+        "isAnonymous": { "type": "boolean", "description": "Whether the testimony is anonymous." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp of creation." }
+      },
+      "required": ["name", "uid", "content", "status", "createdAt"]
+    },
+    "Activity": {
+      "title": "Church Activity",
+      "description": "A recent activity or event at the church.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "category": { "type": "string" },
+        "iconName": { "type": "string" }
+      },
+      "required": ["title", "description", "date", "category", "iconName"]
+    },
+    "Leadership": {
+      "title": "Leadership Category",
+      "description": "A category of church leadership or a department.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "items": { "type": "array", "items": { "type": "string" } },
+        "iconName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "items", "iconName", "createdAt"]
+    },
+    "User": {
+      "title": "User Profile",
+      "description": "User profile and role information.",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "staff", "member", "social_media_manager", "youth_leader", "ministry_head"] },
+        "photoURL": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "bio": { "type": "string" },
+        "district": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["displayName", "email", "role", "createdAt"]
+    },
+    "Sermon": {
+      "title": "Sermon",
+      "description": "A sermon record with AI-generated insights.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "preacher": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "description": { "type": "string" },
+        "transcript": { "type": "string" },
+        "category": { "type": "string" },
+        "insights": {
+          "type": "object",
+          "properties": {
+            "summaryEn": { "type": "string" },
+            "summarySw": { "type": "string" },
+            "devotional": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "day": { "type": "integer" },
+                  "title": { "type": "string" },
+                  "content": { "type": "string" }
+                }
+              }
+            },
+            "discussionQuestions": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "preacher", "date", "description"]
+    },
+    "SocialPost": {
+      "title": "Social Media Post",
+      "description": "A post to be distributed across social media platforms.",
+      "type": "object",
+      "properties": {
+        "content": { "type": "string" },
+        "platforms": { "type": "array", "items": { "type": "string", "enum": ["facebook", "youtube", "web"] } },
+        "status": { "type": "string", "enum": ["draft", "published"] },
+        "authorUid": { "type": "string" },
+        "authorName": { "type": "string" },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["content", "platforms", "status", "authorUid", "createdAt"]
+    }
+  },
+  "firestore": {
+    "prayers": {
+      "schema": "Prayer",
+      "description": "Collection of prayer requests."
+    },
+    "testimonies": {
+      "schema": "Testimony",
+      "description": "Collection of testimonies."
+    },
+    "activities": {
+      "schema": "Activity",
+      "description": "Collection of church activities for the home page."
+    },
+    "leadership": {
+      "schema": "Leadership",
+      "description": "Collection of leadership and department information."
+    },
+    "users": {
+      "schema": "User",
+      "description": "Collection of user profiles."
+    },
+    "sermons": {
+      "schema": "Sermon",
+      "description": "Collection of sermons and AI insights."
+    },
+    "social_posts": {
+      "schema": "SocialPost",
+      "description": "Collection of social media posts for distribution."
+    },
+    "admin_logs": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "adminUid": { "type": "string" },
+          "action": { "type": "string" },
+          "target": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        },
+        "required": ["adminUid", "action", "target", "timestamp"]
+      },
+      "description": "Audit logs for administrative actions."
+    }
+  }
+}

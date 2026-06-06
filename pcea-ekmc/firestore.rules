@@ -1,0 +1,280 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields:
+    //   - displayName: string (required)
+    //   - email: string (required, email format)
+    //   - role: string (required, enum: ['admin', 'user'])
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: prayers
+    // Fields:
+    //   - authorName: string (required)
+    //   - authorUid: string (required)
+    //   - content: string (required, max 1000 chars)
+    //   - isAnonymous: bool (required)
+    //   - prayerCount: number (required)
+    //   - prayedBy: list (required, max 1000 UIDs)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: testimonies
+    // Fields:
+    //   - name: string (required)
+    //   - uid: string (required)
+    //   - content: string (required, max 5000 chars)
+    //   - status: string (required, enum: ['pending', 'approved', 'rejected'])
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: activities
+    // Fields:
+    //   - title: string (required)
+    //   - description: string (required)
+    //   - date: timestamp (required)
+    //   - category: string (required)
+    //   - iconName: string (required)
+    //
+    // Collection: leadership
+    // Fields:
+    //   - title: string (required)
+    //   - items: list (required)
+    //   - iconName: string (required)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: sermons
+    // Fields:
+    //   - title: string (required)
+    //   - preacher: string (required)
+    //   - date: string (required, YYYY-MM-DD)
+    //   - description: string (required)
+    //   - transcript: string (optional)
+    //   - category: string (optional)
+    //   - insights: map (optional)
+    //   - createdAt: timestamp (optional)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          (request.auth.token.email == "josephnyagah34@gmail.com" && request.auth.token.email_verified == true)
+        );
+    }
+
+    function isSocialManager() {
+      return isAuthenticated() &&
+        (
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['social_media_manager', 'youth_leader']) ||
+          isAdmin()
+        );
+    }
+
+    function isYouthLeader() {
+      return isAuthenticated() &&
+        (
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'youth_leader') ||
+          isAdmin()
+        );
+    }
+
+    function isMinistryHead() {
+      return isAuthenticated() &&
+        (
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ministry_head') ||
+          isAdmin()
+        );
+    }
+
+    function isRecent(time) {
+      return time > request.time - duration.value(5, 'm') && time < request.time + duration.value(5, 'm');
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url == "" || url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['displayName', 'email', 'role', 'createdAt']) &&
+             hasOnlyAllowedFields(['displayName', 'email', 'role', 'createdAt', 'updatedAt', 'photoURL', 'phoneNumber', 'bio', 'district', 'isPublic']) &&
+             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
+             isValidEmail(data.email) &&
+             data.role in ['admin', 'staff', 'member', 'social_media_manager', 'youth_leader', 'ministry_head'] &&
+             data.createdAt is timestamp &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp) &&
+             (!('photoURL' in data) || (isValidUrl(data.photoURL) && data.photoURL.size() < 1000)) &&
+             (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() < 20)) &&
+             (!('bio' in data) || (data.bio is string && data.bio.size() < 1000)) &&
+             (!('district' in data) || (data.district is string && data.district.size() < 100)) &&
+             (!('isPublic' in data) || data.isPublic is bool);
+    }
+
+    function isValidAdminLog(data) {
+      return hasRequiredFields(['adminUid', 'action', 'target', 'timestamp']) &&
+             data.adminUid == request.auth.uid &&
+             data.timestamp is timestamp &&
+             isRecent(data.timestamp);
+    }
+
+    function isValidPrayer(data) {
+      return hasRequiredFields(['authorName', 'authorUid', 'content', 'isAnonymous', 'prayerCount', 'prayedBy', 'createdAt']) &&
+             hasOnlyAllowedFields(['authorName', 'authorUid', 'content', 'isAnonymous', 'prayerCount', 'prayedBy', 'createdAt']) &&
+             data.authorName is string && data.authorName.size() > 0 && data.authorName.size() < 100 &&
+             data.authorUid is string && data.authorUid == request.auth.uid &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 1000 &&
+             data.isAnonymous is bool &&
+             data.prayerCount is number &&
+             data.prayedBy is list && data.prayedBy.size() < 1000 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidTestimony(data) {
+      return hasRequiredFields(['name', 'uid', 'content', 'status', 'createdAt']) &&
+             hasOnlyAllowedFields(['name', 'uid', 'content', 'status', 'createdAt', 'isAnonymous']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.uid is string && data.uid == request.auth.uid &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 5000 &&
+             data.status in ['pending', 'approved', 'rejected'] &&
+             data.createdAt is timestamp &&
+             (!('isAnonymous' in data) || data.isAnonymous is bool);
+    }
+
+    function isValidSermon(data) {
+      return hasRequiredFields(['title', 'preacher', 'date', 'description']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.preacher is string && data.preacher.size() > 0 && data.preacher.size() < 100 &&
+             data.date is string &&
+             data.description is string && data.description.size() > 0 && data.description.size() < 5000 &&
+             (!('transcript' in data) || (data.transcript is string && data.transcript.size() < 50000)) &&
+             (!('category' in data) || (data.category is string && data.category.size() < 100)) &&
+             (!('insights' in data) || data.insights is map);
+    }
+
+    function isValidSocialPost(data) {
+      return hasRequiredFields(['content', 'platforms', 'status', 'authorUid', 'createdAt']) &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 5000 &&
+             data.platforms is list && data.platforms.size() > 0 &&
+             data.status in ['draft', 'published'] &&
+             data.authorUid == request.auth.uid &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Match Blocks
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+                    (request.resource.data.role == 'member' || (request.auth.token.email == "josephnyagah34@gmail.com" && request.auth.token.email_verified == true)) && 
+                    isRecent(request.resource.data.createdAt);
+      allow update: if isAdmin() || (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role && areImmutableFieldsUnchanged(['createdAt']));
+      allow delete: if isAdmin();
+    }
+
+    match /sermons/{sermonId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidSermon(request.resource.data) && (!('createdAt' in request.resource.data) || isRecent(request.resource.data.createdAt));
+      allow update: if isAdmin() && isValidSermon(request.resource.data) && areImmutableFieldsUnchanged(['createdAt']);
+      allow delete: if isAdmin();
+    }
+
+    match /admin_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && isValidAdminLog(request.resource.data);
+    }
+
+    match /prayers/{prayerId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidPrayer(request.resource.data) && isRecent(request.resource.data.createdAt);
+      allow update: if isAuthenticated() && 
+                    hasRequiredFields(['authorName', 'authorUid', 'content', 'isAnonymous', 'prayerCount', 'prayedBy', 'createdAt']) &&
+                    areImmutableFieldsUnchanged(['authorUid', 'createdAt']) &&
+                    (
+                      // Allow anyone to update prayerCount and prayedBy (incrementing/adding self)
+                      (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['prayerCount', 'prayedBy']) &&
+                       request.resource.data.prayerCount == resource.data.prayerCount + 1 &&
+                       request.resource.data.prayedBy.size() == resource.data.prayedBy.size() + 1 &&
+                       request.auth.uid in request.resource.data.prayedBy &&
+                       !(request.auth.uid in resource.data.prayedBy)) ||
+                      // Allow author to update content
+                      (isOwner(resource.data.authorUid) && isValidPrayer(request.resource.data)) ||
+                      isAdmin()
+                    );
+      allow delete: if isOwner(resource.data.authorUid) || isAdmin();
+    }
+
+    match /testimonies/{testimonyId} {
+      allow read: if resource.data.status == 'approved' || isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow create: if isAuthenticated() && isValidTestimony(request.resource.data) && request.resource.data.status == 'pending' && isRecent(request.resource.data.createdAt);
+      allow update: if isAdmin() || (isOwner(resource.data.uid) && isValidTestimony(request.resource.data) && request.resource.data.status == resource.data.status && areImmutableFieldsUnchanged(['uid', 'createdAt']));
+      allow delete: if isAdmin() || isOwner(resource.data.uid);
+    }
+
+    match /activities/{activityId} {
+      allow read: if true;
+      allow write: if isAdmin() || isMinistryHead();
+    }
+
+    match /leadership/{leadershipId} {
+      allow read: if true;
+      allow write: if isAdmin() || isMinistryHead();
+    }
+
+    match /social_posts/{postId} {
+      allow read: if isSocialManager();
+      allow create: if isSocialManager() && isValidSocialPost(request.resource.data) && isRecent(request.resource.data.createdAt);
+      allow update: if isSocialManager() && isValidSocialPost(request.resource.data) && areImmutableFieldsUnchanged(['authorUid', 'createdAt']);
+      allow delete: if isAdmin();
+    }
+    
+    match /test/connection {
+      allow read: if true;
+    }
+    
+    // Fallback for any other collection (e.g. members if still used)
+    match /members/{memberId} {
+      allow read, write: if isAuthenticated() && (request.auth.uid == memberId || isAdmin());
+    }
+
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
